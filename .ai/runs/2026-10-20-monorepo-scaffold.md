@@ -3,7 +3,7 @@
 - **Date:** 2026-10-20
 - **Goal:** implement the approved spec: move the app into `packages/app`, scaffold `core`, `db` and `ui`, and wire MikroORM, Awilix, Tailwind, shadcn/ui and Vitest
 - **Spec:** [2026-10-20-monorepo-scaffold](../specs/implemented/2026-10-20-monorepo-scaffold.md)
-- **Status:** completed (uncommitted on branch `feat/monorepo-scaffold`)
+- **Status:** completed. PR: https://github.com/maciejsmolen/ai_techleaders_sandbox/pull/1
 
 ## Plan
 
@@ -86,7 +86,7 @@ All results below are from this run.
 
 ## Open issues / follow-ups
 
-- Commit the work and open a PR (not done; waiting for the user).
+- Review and merge PR #1.
 - Replace the starter landing page, then enable Tailwind preflight on the frontend (`@import "tailwindcss";`) and delete the unused `(frontend)/page.module.css`.
 - The first real entity: add it to `packages/db/src/entities/index.ts`, remove `warnWhenNoEntities: false`, and generate a migration.
 - TypeScript 7 upgrade (separate spec).
