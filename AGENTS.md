@@ -1,12 +1,104 @@
-<!-- BEGIN:nextjs-agent-rules -->
+# Next.js is newer than your training data
 
-# This is NOT the Next.js you know
+Its APIs, conventions, and file structure may differ from what you remember. Before writing Next.js code, read the relevant guide in `node_modules/next/dist/docs/` (hoisted to the repo root). The managed rules block that `next dev` maintains lives in [`packages/app/AGENTS.md`](packages/app/AGENTS.md).
 
-This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+# DevMentor — architecture rules
 
-This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+DevMentor is a monorepo. These rules are **binding** for all code. If a task seems to need something different (another library, a new package, a dependency that breaks the direction rules), stop and ask. Don't work around a rule silently. Architecture notes for humans are in `README.md`.
 
-<!-- END:nextjs-agent-rules -->
+## Stack
+
+| Concern | Choice |
+|---------|--------|
+| Framework | Next.js (latest, App Router) + React + TypeScript (`strict`) |
+| Database | PostgreSQL |
+| ORM | MikroORM (`@mikro-orm/postgresql`): entities, migrations, connection pooling |
+| Dependency injection | Awilix |
+| Styling, frontend (public) pages | Tailwind CSS |
+| Styling, backend (admin) pages | shadcn/ui (built on Tailwind) |
+| Testing | Vitest |
+| Package manager | npm workspaces (`package-lock.json` is the lockfile; don't add yarn or pnpm files) |
+
+- Don't add an alternative to any of these (e.g. Prisma, Drizzle, Inversify, CSS-in-JS, another UI kit) without the user's approval.
+- These libraries change between major versions. Before writing setup or config code, check the installed version and its docs (for Next.js, `node_modules/next/dist/docs/`). Don't rely on APIs from memory.
+
+## Monorepo layout
+
+```
+packages/
+├── app/    # @devmentor/app  — the Next.js application (routes, pages, server actions, DI composition root)
+├── core/   # @devmentor/core — reusable, framework-agnostic logic: domain types, services, interfaces, DI tokens, utils
+├── db/     # @devmentor/db   — MikroORM config, entities, repositories, migrations, seeders, DB helpers
+└── ui/     # @devmentor/ui   — reusable React components (shadcn/ui components + shared Tailwind components)
+```
+
+- Packages are named `@devmentor/<folder>`. Import them by package name, never by relative path across packages (`../../core/...` is forbidden).
+- Each package has its own `package.json`, `tsconfig.json` (extending a shared base), and a public entry point (`src/index.ts` and/or `exports`). Import only from a package's public exports, not from its internals.
+- Dependency direction (no cycles):
+  - `app` → `core`, `db`, `ui`
+  - `db` → `core`
+  - `ui` → `core` (types and utils only)
+  - `core` → no internal packages
+- `ui` must not import `db` or anything server-only. `core` must not import Next.js, React, or MikroORM.
+- New code goes in the lowest package that fits. If it is reusable and framework-agnostic, it goes in `core`. If it touches persistence, `db`. If it is a reusable component, `ui`. If it is app-specific wiring or routes, `app`.
+- To add a new package, propose it first (it changes the architecture).
+- Next.js transpiles workspace packages automatically, so `transpilePackages` is not needed for them. Internal packages ship TypeScript source; there is no build step.
+- `eslint.config.mjs` enforces these boundaries (`no-restricted-imports`). Don't disable those rules; if one blocks you, the code is in the wrong package.
+
+## Database (MikroORM + PostgreSQL)
+
+- Entities, the MikroORM config, repositories, and migrations live in `packages/db` only.
+- **All schema changes go through migrations** created with the MikroORM migrator and committed to `packages/db`. Never use `schema:update` or `schema:fresh` against shared or production databases. Never edit a migration that has already been applied; write a new one.
+- Always get the ORM through `getOrm()` from `@devmentor/db`. It returns the single per-process instance, cached on `globalThis` so dev hot reloads reuse the pool. Pool size comes from `DATABASE_POOL_MIN`/`DATABASE_POOL_MAX`.
+- `src/config.ts` holds the runtime options shared by the app and the CLI. `src/mikro-orm.config.ts` is the CLI-only config (migrator, seeder); the app must not import it.
+- List every entity explicitly in `packages/db/src/entities/index.ts` (no folder globs). When the first entity is added, remove `discovery.warnWhenNoEntities: false` from `config.ts`.
+- Use a **forked `EntityManager` per request or unit of work** (`em.fork()` or `RequestContext`). Never use the global EntityManager in request handling.
+- Run database code on the server only (Server Components, Route Handlers, Server Actions, scripts), never in client components. MikroORM must stay out of the bundle via `serverExternalPackages` in `packages/app/next.config.ts`. `@mikro-orm/core` and `pg` are excluded by Next by default, and `@mikro-orm/postgresql` is listed. Add any other `@mikro-orm/*` package that app code imports at runtime.
+- Configuration comes from environment variables. There is one `.env` at the repo root (template: `.env.example`), loaded by `next.config.ts` and by the CLI config. Never commit credentials. `.env*` is gitignored except `.env.example`.
+
+## Dependency injection (Awilix)
+
+- `core` defines service interfaces and registration names. `db` provides the persistence implementations (repositories, EM factory) together with a function that registers them. The **composition root is in `app`**: it builds the container and calls each package's registration function.
+- Services receive their dependencies through constructor/factory injection. Don't import singletons directly and don't call `container.resolve` inside services. Resolve only at the edges (route handlers, server actions, server components).
+- Lifetimes: infrastructure (ORM instance, config, loggers) is `singleton`. Anything that holds an `EntityManager` or request data is `scoped`. Create a scope per request with `container.createScope()`.
+- The container uses **`InjectionMode.PROXY`** with `strict: true`. Factories take the cradle as their single argument and destructure what they need (`({ em }) => …`). Strict mode rejects a singleton that depends on a scoped registration.
+- Each package exports a `<Pkg>Cradle` type and a `register<Pkg>(container)` function. `packages/app/src/server/container.ts` combines them (`AppCradle`). At the edges, use `withRequestScope(fn)`: it creates a scope and disposes it afterwards.
+
+## UI: frontend vs backend pages
+
+- **Frontend pages** (public, user-facing) use plain Tailwind CSS utilities and shared components from `@devmentor/ui` that are built with Tailwind. They don't use shadcn/ui components.
+- **Backend pages** (admin and management areas) use shadcn/ui components.
+- The two areas are separate route groups with **separate root layouts** (each renders its own `<html>`/`<body>` and imports its own CSS), so their styles can't leak into each other:
+  - `src/app/(frontend)/` holds the public pages. Its CSS is `(frontend)/globals.css`.
+  - `src/app/(backend)/admin/` holds the admin area, served under **`/admin`**. Its CSS is `@devmentor/ui/globals.css` (Tailwind + shadcn theme).
+  - There is no top-level `app/layout.tsx`. Navigating between the two areas does a full page load, which is expected.
+- shadcn/ui components are generated into `packages/ui` (its `components.json` lives there) and imported as `@devmentor/ui/...`. Don't duplicate them in `app`.
+- Tailwind v4 is configured CSS-first (no `tailwind.config.*`). Each area's CSS has `@source` directives that cover `packages/ui/src` and `packages/app/src`; keep them when moving files.
+- The frontend CSS leaves out Tailwind's preflight reset while the starter landing page exists. Switch to `@import "tailwindcss";` when that page is replaced.
+- Add shadcn components from `packages/ui`: `npx shadcn add <component>`.
+- Default to Server Components. Add `"use client"` only where interactivity requires it.
+
+## Testing (Vitest)
+
+- Tests sit next to the code as `*.test.ts(x)` in `src/`. Each package is a Vitest project (`packages/*/vitest.config.*`), aggregated by the root `vitest.config.mts`.
+- Unit tests don't touch the database. Pass fakes through factory arguments, or build the container with `createAppContainer(fakeOrm)`.
+- New services come with tests. A bug fix comes with a test that fails without the fix.
+
+## Commands
+
+Run everything from the repo root:
+
+| Command | What it does |
+|---------|--------------|
+| `npm run dev` / `build` / `start` | Next.js app (`@devmentor/app`) |
+| `npm run lint` / `npm run typecheck` | ESLint / `tsc --noEmit` in every package |
+| `npm test` | Vitest, all packages (`npm run test -w @devmentor/<pkg>` for one) |
+| `npm run db:migration:create -- --name <name>` | Generate a migration from entity changes (`--blank` for an empty one) |
+| `npm run db:migration:up` / `db:migration:down` | Apply / revert migrations |
+| `npm run db:seed` | Run `DatabaseSeeder` |
+| `docker compose up -d` | Local PostgreSQL 18 (matches `.env.example`) |
+
+Target a single package with `-w @devmentor/<pkg>`. New packages expose the same scripts (`lint`, `typecheck`, `test`) so the root scripts pick them up.
 
 # Project AI workflow (`.ai/`)
 
@@ -80,11 +172,14 @@ Every file in `specs/` (including `implemented/` and `archive/`), `runs/`, and `
 
 ## Verify every change
 
-- "Done" means verified. Before reporting completion, run the checks that apply:
+- "Done" means verified. Before reporting completion, run the checks that apply, for every package you touched (see **Commands** above):
   - `npm run lint`
-  - `npx tsc --noEmit`
+  - `npm run typecheck`
+  - `npm test`
   - `npm run build` for changes that affect routing, config, or the build
+  - For schema changes, the migration must apply cleanly to a fresh database.
 - For UI or behavior changes, run the app (`npm run dev`) and exercise the change.
+- Check that your change respects the architecture rules above: package boundaries, dependency direction, DI, and migrations.
 - When fixing a bug, reproduce it first (from the report, logs, or a failing check), then confirm the same reproduction passes after the fix.
 - Review your own diff before finishing: would it survive a skeptical reviewer? If a fix works but is hacky, rewrite it cleanly now that you understand the problem.
 - Report the real results. If a check fails or can't be run, say so (and log it in the run log).
