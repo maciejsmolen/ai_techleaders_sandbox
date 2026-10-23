@@ -96,23 +96,18 @@ jobs:
       - run: npm run build
         env:
           NODE_ENV: production
-      - name: Cache agent-browser's Chrome
-        uses: actions/cache@v4
-        with:
-          path: ~/.agent-browser/browsers
-          key: agent-browser-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-      - name: Install Chrome and its system libraries
-        # `--with-deps` runs apt-get. A stalled mirror download once hung this
-        # step for 10+ minutes, so apt gives up on silent connections and
-        # retries, and each attempt is capped.
+      - name: Use the runner's preinstalled Google Chrome
+        # The runner image ships Chrome and all its system libraries.
+        # `agent-browser install --with-deps` would download them with apt
+        # instead, and an Azure mirror kept stalling on a 61 MB font package.
         run: |
-          printf 'Acquire::Retries "3";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' \
-            | sudo tee /etc/apt/apt.conf.d/80-ci-network > /dev/null
-          for attempt in 1 2 3; do
-            timeout 5m npx agent-browser install --with-deps && exit 0
-            echo "::warning::agent-browser install attempt $attempt failed; retrying"
-          done
-          exit 1
+          chrome="$(command -v google-chrome || command -v google-chrome-stable || true)"
+          if [ -z "$chrome" ]; then
+            echo "::error::Google Chrome not found on the runner image"
+            exit 1
+          fi
+          "$chrome" --version
+          echo "AGENT_BROWSER_EXECUTABLE_PATH=$chrome" >> "$GITHUB_ENV"
       - name: Run integration tests (PostgreSQL via testcontainers)
         timeout-minutes: 10
         run: npm run test:integration
