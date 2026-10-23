@@ -32,6 +32,12 @@ describe("deriveFields", () => {
     ]);
   });
 
+  it("falls back to a text input for types it has no input for", () => {
+    const [field] = deriveFields(z.object({ startsAt: z.date().nullable() }));
+
+    expect(field).toMatchObject({ name: "startsAt", kind: "text", optional: false });
+  });
+
   it("applies overrides", () => {
     const [firstName] = deriveFields(schema, { firstName: { label: "Given name", placeholder: "Ada" } });
 

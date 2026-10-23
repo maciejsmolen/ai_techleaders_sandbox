@@ -50,6 +50,16 @@ describe("getContainer / withScope", () => {
     expect(getOrm).toHaveBeenCalledOnce();
   });
 
+  it("disposes the request scope even when fn throws", async () => {
+    getOrm.mockResolvedValue(fakeOrm().orm);
+    const container = await getContainer();
+    const dispose = vi.fn(async () => container);
+    vi.spyOn(container, "createScope").mockReturnValueOnce({ cradle: {}, dispose } as never);
+
+    await expect(withScope(async () => Promise.reject(new Error("boom")))).rejects.toThrow("boom");
+    expect(dispose).toHaveBeenCalledOnce();
+  });
+
   it("turns an ORM init failure into a 503 error and retries on the next call", async () => {
     getOrm.mockRejectedValueOnce(new Error("ECONNREFUSED"));
 
