@@ -53,6 +53,35 @@ describe("apiCall", () => {
     await expect(apiCall("/api/things")).resolves.toMatchObject({ ok: false, error: { code: "invalid_response" } });
   });
 
+  it("treats an unreadable or empty body as an invalid response", async () => {
+    const unreadable = new Response("{}");
+    vi.spyOn(unreadable, "text").mockRejectedValue(new TypeError("body stream already read"));
+    stubFetch(async () => unreadable);
+    await expect(apiCall("/api/things")).resolves.toMatchObject({ ok: false, error: { code: "invalid_response" } });
+
+    stubFetch(async () => new Response(null, { status: 204 }));
+    await expect(apiCall("/api/things")).resolves.toMatchObject({ ok: false, error: { code: "invalid_response" } });
+  });
+
+  it("rejects envelopes with the wrong shape", async () => {
+    for (const body of [null, "text", { ok: true }, { ok: false, error: { code: 1 } }, { ok: false, error: null }]) {
+      stubFetch(async () => json(body));
+      await expect(apiCall("/api/things")).resolves.toMatchObject({ ok: false, error: { code: "invalid_response" } });
+    }
+  });
+
+  it("sends no body or content type for a call without a body, and keeps caller headers", async () => {
+    const fetchMock = stubFetch(async () => json({ ok: true, data: null }));
+
+    await apiCall("/api/things", { headers: { "x-trace": "1" } });
+
+    const [, init] = fetchMock.mock.calls[0]!;
+    const headers = new Headers(init?.headers);
+    expect(init?.body).toBeUndefined();
+    expect(headers.get("content-type")).toBeNull();
+    expect(headers.get("x-trace")).toBe("1");
+  });
+
   it("turns a network failure into an error result instead of throwing", async () => {
     stubFetch(async () => {
       throw new TypeError("Failed to fetch");

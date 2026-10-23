@@ -57,6 +57,10 @@ describe("DataTable", () => {
     await user.click(screen.getByRole("button", { name: "Next" }));
     await user.click(screen.getByRole("button", { name: "Next" }));
     expect(screen.getByText("Page 3 of 3")).toBeDefined();
+    expect(screen.getByRole("button", { name: "Next" }).hasAttribute("disabled")).toBe(true);
+    await user.click(screen.getByRole("button", { name: "Previous" }));
+    expect(screen.getByText("Page 2 of 3")).toBeDefined();
+    await user.click(screen.getByRole("button", { name: "Next" }));
     expect(bodyRows().map((row) => row.textContent)).toEqual(["Person 524"]);
 
     // Fewer rows (e.g. after a delete): clamps to the last page that exists.
@@ -65,6 +69,14 @@ describe("DataTable", () => {
 
     rerender(<DataTable columns={columns} rows={people(2)} getRowId={(row) => row.id} pageSize={2} />);
     expect(screen.queryByRole("navigation", { name: "Pagination" })).toBeNull();
+  });
+
+  it("uses the default page size and renders the caption for screen readers", () => {
+    render(<DataTable columns={columns} rows={people(21)} getRowId={(row) => row.id} caption="People" />);
+
+    expect(bodyRows()).toHaveLength(20);
+    expect(screen.getByText("Page 1 of 2")).toBeDefined();
+    expect(screen.getByRole("table", { name: "People" })).toBeDefined();
   });
 
   it("renders row actions in a trailing column", () => {

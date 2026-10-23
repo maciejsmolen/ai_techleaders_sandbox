@@ -144,7 +144,7 @@ function FieldRow({
 }: {
   id: string;
   field: FormField;
-  value: string | boolean | undefined;
+  value: string | boolean;
   errors?: string[];
   onChange: (value: string | boolean) => void;
 }) {
@@ -172,7 +172,7 @@ function FieldRow({
           {field.kind === "select" ? (
             <NativeSelect
               id={id}
-              value={String(value ?? "")}
+              value={String(value)}
               onChange={(event) => onChange(event.target.value)}
               aria-invalid={invalid}
               aria-describedby={describedBy}
@@ -188,7 +188,7 @@ function FieldRow({
             <Input
               id={id}
               type={field.kind}
-              value={String(value ?? "")}
+              value={String(value)}
               placeholder={field.placeholder}
               onChange={(event) => onChange(event.target.value)}
               aria-invalid={invalid}

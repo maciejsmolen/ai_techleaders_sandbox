@@ -103,12 +103,20 @@ Then open:
 | `npm run lint` | ESLint in every package, including the package-boundary rules |
 | `npm run typecheck` | TypeScript in every package |
 | `npm test` | Vitest across all packages |
+| `npm run test:coverage` | Unit tests with the 100% coverage gate (HTML report in `coverage/`) |
+| `npm run test:integration` | Integration tests against the production build (run `npm run build` first) |
 | `npm run build` | Production build of the app |
 | `npm run db:migration:create -- --name <name>` | New migration (from entity changes) |
 | `npm run db:migration:up` / `db:migration:down` | Apply / revert migrations |
 | `npm run db:seed` | Seed the database |
 
 > If your shell exports `NODE_ENV=development`, run the build as `NODE_ENV=production npm run build`; `next build` fails otherwise.
+
+## Testing and CI
+
+- **Unit tests** (Vitest) sit next to the code as `*.test.ts(x)`. Coverage must stay at **100%** (lines, branches, functions, statements) for every package; `npm run test:coverage` fails below that. The shadcn-generated primitives in `packages/ui/src/components/ui/` are the only code excluded.
+- **Integration tests** (`packages/app/integration/`) start PostgreSQL 18 in a throwaway Docker container with [testcontainers](https://testcontainers.com), apply the migrations, boot the production build with `next start`, and drive it in Chrome with [agent-browser](https://github.com/vercel-labs/agent-browser). One-time setup: `npx agent-browser install --with-deps`. Without Docker, point `INTEGRATION_DATABASE_URL` at an empty scratch database instead.
+- **CI** (`.github/workflows/ci.yml`) runs on every pull request and on pushes to `main`, with four jobs: lint & typecheck, unit tests with coverage (report uploaded as an artifact and summarised on the run page), production build, and integration tests (screenshots and server logs uploaded on failure).
 
 ## AI-assisted development
 

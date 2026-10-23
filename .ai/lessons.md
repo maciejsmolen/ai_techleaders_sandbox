@@ -33,6 +33,8 @@ The `details` link is optional for short lessons.
 
 <!-- Add new entries below this line, newest first. -->
 
+- 2026-10-23 — **A `.gitignore` pattern with a slash in the middle is anchored to the `.gitignore`'s folder** — `integration/.artifacts/` in the root file never matched `packages/app/integration/.artifacts`, and the artifacts got committed. Prefix with `**/` for nested paths, and check with `git check-ignore -v <path>` before committing.
+- 2026-10-23 — **agent-browser selectors aren't Playwright's** — `button:has-text('…')` fails with "Element not found". Use CSS, or `find role <role> click --name "<name>"` (`Browser.clickRole` in the integration helper).
 - 2026-10-23 — **Never rely on class names at runtime** — the production build minifies them, so `new.target.name`/`constructor.name` become `""` (errors showed `name: ""` in pino logs). Set `name` explicitly on each error class; identify errors by `instanceof` or a `code` field.
 - 2026-10-23 — **After renaming or moving a route group, run `npx next typegen` in `packages/app`** — `tsc` otherwise fails on stale `.next/types/validator.ts` entries pointing at the old paths.
 - 2026-10-23 — **In-browser checks: use agent-browser, not jsdom** — jsdom crashes evaluating Next's client bundle. `agent-browser install --with-deps` installs Chrome and its system libraries via apt (works in the sandbox); then `agent-browser open <url>`, `wait --text`, `snapshot -c`. Without `--with-deps` Chrome fails with `libnspr4.so: cannot open shared object file`.
