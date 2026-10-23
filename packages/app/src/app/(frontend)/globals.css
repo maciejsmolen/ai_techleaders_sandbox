@@ -1,3 +1,11 @@
+/* Tailwind for the public pages. Preflight (Tailwind's reset) is left out
+   while the starter page below is still in use, so it renders exactly as
+   before; switch to `@import "tailwindcss";` once that page is replaced. */
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+@source "../../../../ui/src";
+
 /* Page-wide basics first. The starter screen's own classes follow; once
    page.tsx is replaced nothing uses them, and the page stays plain and dark. */
 :root {
