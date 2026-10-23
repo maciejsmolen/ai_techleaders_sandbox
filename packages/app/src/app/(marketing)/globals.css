@@ -1,0 +1,9 @@
+@import "tailwindcss";
+@source "../..";
+@source "../../../../ui/src";
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+}

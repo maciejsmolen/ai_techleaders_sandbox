@@ -12,7 +12,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 The Next.js application. Project-wide rules (architecture, `.ai/` workflow, working principles) live in the root [`AGENTS.md`](../../AGENTS.md) and apply here in full.
 
-- Routes: `src/app/(frontend)/` holds the public pages (Tailwind only). `src/app/(backend)/admin/` holds the admin area (shadcn/ui from `@devmentor/ui`).
-- The Awilix composition root is `src/server/container.ts`. Resolve services only through `withRequestScope` in route handlers, server actions, and server components.
-- `next.config.ts` → `serverExternalPackages` must list every `@mikro-orm/*` package imported at runtime (`@mikro-orm/core` is excluded by Next already).
+- Routes: `src/app/(marketing)/` holds the public pages (Tailwind only); further persona groups (`(auth)`, `(student)`, `(mentor)`) are added with their first page. `src/app/(backend)/admin/` holds the admin area (shadcn/ui from `@devmentor/ui`).
+- The Awilix composition root is in `@devmentor/core/container`. Resolve services only through `withScope` in route handlers, server actions, and server components; wrap route handlers in `apiHandler` (or use `makeCrudRoute`) from `@devmentor/core/http`.
+- The app never imports `@devmentor/db` or `@mikro-orm/*` directly, but `next.config.ts` → `serverExternalPackages` must still list every `@mikro-orm/*` package loaded at runtime through core (`@mikro-orm/core` is excluded by Next already).
 - The `.env` lives at the repo root, not here; `next.config.ts` loads it.

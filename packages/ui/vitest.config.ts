@@ -4,6 +4,7 @@ export default defineProject({
   test: {
     name: "ui",
     include: ["src/**/*.test.{ts,tsx}"],
-    passWithNoTests: true,
+    environment: "jsdom",
+    setupFiles: ["./test/setup.ts"],
   },
 });

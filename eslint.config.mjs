@@ -2,7 +2,7 @@ import { defineConfig, globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
 
-// Package boundaries from AGENTS.md ("Monorepo layout"). ESLint keeps only the
+// Package boundaries from AGENTS.md ("Monorepo layout"): app → core → db, ui standalone. ESLint keeps only the
 // last matching `no-restricted-imports` entry, so every package block below
 // repeats the shared "no relative imports into another package" pattern.
 const crossPackageRelative = {
@@ -28,33 +28,49 @@ const eslintConfig = defineConfig([
     // Pages Router only; the app uses the App Router.
     rules: { "@next/next/no-html-link-for-pages": "off" },
   },
-  boundaries(["packages/app/**"], []),
+  boundaries(
+    ["packages/app/**"],
+    [
+      forbid(
+        ["@devmentor/db", "@devmentor/db/*", "@mikro-orm/*"],
+        "app reaches the database only through core services (app → core → db).",
+      ),
+    ],
+  ),
   boundaries(
     ["packages/core/**"],
     [
-      forbid(["@devmentor/*"], "core must not depend on other internal packages."),
+      forbid(["@devmentor/app", "@devmentor/app/*", "@devmentor/ui", "@devmentor/ui/*"], "core may only depend on db."),
       forbid(
         ["next", "next/*", "react", "react/*", "react-dom", "react-dom/*", "@mikro-orm/*"],
-        "core is framework-agnostic: no Next.js, React, or MikroORM.",
+        "core is framework-agnostic: no Next.js or React, and only db imports MikroORM.",
       ),
     ],
   ),
   boundaries(
     ["packages/db/**"],
     [
-      forbid(["@devmentor/app", "@devmentor/app/*", "@devmentor/ui", "@devmentor/ui/*"], "db may only depend on core."),
+      forbid(["@devmentor/*"], "db must not depend on other internal packages."),
       forbid(["next", "next/*", "react", "react/*"], "db has no UI or Next.js code."),
     ],
   ),
   boundaries(
     ["packages/ui/**"],
     [
-      forbid(
-        ["@devmentor/app", "@devmentor/app/*", "@devmentor/db", "@devmentor/db/*", "@mikro-orm/*"],
-        "ui may only use types and utils from core; no data access.",
-      ),
+      forbid(["@devmentor/*", "@mikro-orm/*"], "ui must not depend on other internal packages; no data access."),
     ],
   ),
+  {
+    // `apiCall` is the only sanctioned fetch() call site on the client.
+    files: ["packages/app/src/**", "packages/ui/src/**"],
+    ignores: ["packages/ui/src/backend/api/apiCall.ts"],
+    rules: {
+      "no-restricted-globals": [
+        "error",
+        { name: "fetch", message: "Call /api/* through apiCall/apiCallOrThrow from @devmentor/ui/backend/api." },
+      ],
+    },
+  },
   globalIgnores([
     "**/.next/**",
     "**/out/**",

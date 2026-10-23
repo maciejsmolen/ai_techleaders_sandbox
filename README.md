@@ -10,6 +10,8 @@ DevMentor is a web application built with Next.js, React, and TypeScript on top 
 | Database | [PostgreSQL](https://www.postgresql.org) |
 | ORM | [MikroORM](https://mikro-orm.io): entities, migrations, connection pooling, unit of work |
 | Dependency injection | [Awilix](https://github.com/jeffijoe/awilix) |
+| Validation | [Zod](https://zod.dev) |
+| Logging | [pino](https://getpino.io) |
 | Frontend styling | [Tailwind CSS](https://tailwindcss.com) |
 | Backend (admin) UI | [shadcn/ui](https://ui.shadcn.com) |
 | Testing | [Vitest](https://vitest.dev) |
@@ -17,63 +19,65 @@ DevMentor is a web application built with Next.js, React, and TypeScript on top 
 
 ## Architecture
 
+The binding rules are in [`AGENTS.md`](AGENTS.md); the engineering standards (naming, principles, security minimums, review checklist) are in [`.ai/specs/engineering-standards.md`](.ai/specs/engineering-standards.md).
+
 ### Packages
 
 ```
 packages/
-├── app/    @devmentor/app   Next.js application: routes, pages, server actions, DI composition root
-├── core/   @devmentor/core  Framework-agnostic building blocks: domain types, services, interfaces, utils
-├── db/     @devmentor/db    MikroORM config, entities, repositories, migrations, seeders
-└── ui/     @devmentor/ui    Reusable React components (shadcn/ui + shared Tailwind components)
+├── app/    @devmentor/app   Next.js application: routes and pages
+├── core/   @devmentor/core  Services, ports, the DI container, the HTTP layer, env config, logger
+├── db/     @devmentor/db    MikroORM config, entities, migrations, seeders
+└── ui/     @devmentor/ui    shadcn/ui primitives, the backend panel layer, concept components
 ```
 
 Dependencies flow in one direction only:
 
 ```
-          app
-        /  |  \
-       ui  |   db
-        \  |  /
-         core
+   app ──► core ──► db
+    │
+    └────► ui
 ```
 
-Each line points downward: `app` → `ui`, `db`, `core`; `ui` → `core`; `db` → `core`.
+- `app` uses `core` (services, `withScope`, `apiHandler`) and `ui` (components). It never imports `db` or MikroORM: the database is reached only through core services.
+- `core` uses `db` and no framework (no Next.js or React). Only `db` imports MikroORM; it re-exports the types `core` needs.
+- `db` and `ui` depend on no other internal package. Because `ui` can't import `core`, the API envelope type is declared on both sides.
+- Packages import each other by name (`@devmentor/core/http`), never by relative path. ESLint enforces all of this.
 
-- `core` depends on no other internal package and on no framework (no Next.js, React, or MikroORM).
-- `db` builds on `core`. `ui` uses only types and utils from `core`.
-- `app` puts everything together. It is the only package that knows about all the others.
-- Packages import each other by name (`@devmentor/core`), never by relative path.
+Domain code is organized by **concept folders** repeated across the layers (`entities/bookings/`, `services/bookings/`, `validators/bookings/`, `api/bookings/`), created when the concept's first file is added. There is no module runtime.
 
 ### Data layer
 
 - PostgreSQL is accessed only through MikroORM, from `packages/db`.
 - Schema changes are made **only through migrations**, which are committed to `packages/db`.
 - A single MikroORM instance per process owns the connection pool. Each request or unit of work uses its own forked `EntityManager`.
-- Database code runs only on the server: Server Components, Route Handlers, Server Actions, and scripts.
+- Database code runs only on the server: Server Components, Route Handlers, Server Actions, and scripts. The app builds and boots with no database reachable.
 - Connection settings come from environment variables (e.g. `DATABASE_URL`).
 
 ### Dependency injection
 
-An Awilix container is the backbone of the server side:
+An Awilix container is the backbone of the server side. Its **composition root is in `core`** (`packages/core/src/container/`): `container.ts` registers every dependency by hand and `cradle.ts` declares the `Cradle` type.
 
-1. `core` declares service interfaces and their registration names.
-2. `db` (and future infrastructure packages) provide the implementations, plus a function that registers them.
-3. `app` is the **composition root**. It creates the container and registers the modules. Per request, it creates a scoped container.
+- Services get their dependencies through their constructor. Only the edges resolve from the container, with `withScope(fn)`: route handlers, server actions, and server components.
+- Infrastructure (ORM, env, logger) is a singleton. Request-bound services (anything holding an `EntityManager`) are scoped; `withScope` creates and disposes one scope per call.
+- The container runs in `PROXY` injection mode with `strict` lifetimes. If the database can't be reached when it is built, requests get a 503 and the next one retries.
 
-Services get their dependencies injected. Only the edges resolve from the container: route handlers, server actions, and server components.
+### HTTP layer and API envelope
 
-Lifetimes:
-- Infrastructure (ORM, config, logging) is a singleton.
-- Request-bound services (anything holding an `EntityManager`) are scoped.
+Route handlers are thin: validation → auth → service call → envelope. They are built with the helpers in `@devmentor/core/http`, never with a hand-written `try/catch`:
 
-The container runs in `PROXY` injection mode with `strict` lifetimes. `GET /api/health` is the reference slice: route → request scope → `HealthService` (core) → `DbPing` (db) → PostgreSQL. It returns `200 {"status":"ok","db":"ok"}`, or `503` when the database is unreachable.
+- `apiHandler(fn)` turns the return value into `{ "ok": true, "data": … }`, and a thrown `AppError` (`NotFoundError`, `ValidationError`, …) into its status and `{ "ok": false, "error": { "code", "message", "fieldErrors"? } }`. Unexpected errors are logged (pino, with credential redaction) and returned as a 500 without details.
+- `parseBody(request, schema)` returns only the Zod-parsed input, so clients can't mass-assign fields.
+- `makeCrudRoute({ service, createSchema, updateSchema })` returns `{ GET, POST, PUT, DELETE }` for plain CRUD resources.
+
+`GET /api/health` is the reference slice: route → `apiHandler` → `withScope` → `HealthService` (core) → `DbPing` (db) → PostgreSQL. It returns `200 {"ok":true,"data":{"status":"ok","db":"ok"}}`, or `503 {"ok":false,"error":{"code":"service_unavailable",…}}` when the database is unreachable.
 
 ### UI
 
-- **Frontend pages** (public, user-facing) are styled with Tailwind CSS. They live in `src/app/(frontend)/`.
+- **Frontend pages** (public, user-facing) are styled with plain Tailwind CSS. They live in persona route groups: `src/app/(marketing)/` today, with `(auth)`, `(student)` and `(mentor)` added with their first pages.
 - **Backend pages** (admin and management) are built with shadcn/ui components. They live in `src/app/(backend)/admin/` and are served under `/admin`.
 - Each area has its own root layout and stylesheet, so the shadcn theme never reaches the public pages.
-- Reusable components, including the generated shadcn/ui components, live in `packages/ui`.
+- `packages/ui` holds the shadcn primitives (`components/ui/`) and the backend panel layer (`backend/`): `apiCall` (the only way the client calls `/api/*`), `CrudForm` (schema-driven forms), `DataTable` (lists with loading, empty and error states), and the feedback components. The `/admin` system-status table is the reference example.
 
 ## Getting started
 
@@ -99,12 +103,20 @@ Then open:
 | `npm run lint` | ESLint in every package, including the package-boundary rules |
 | `npm run typecheck` | TypeScript in every package |
 | `npm test` | Vitest across all packages |
+| `npm run test:coverage` | Unit tests with the 100% coverage gate (HTML report in `coverage/`) |
+| `npm run test:integration` | Integration tests against the production build (run `npm run build` first) |
 | `npm run build` | Production build of the app |
 | `npm run db:migration:create -- --name <name>` | New migration (from entity changes) |
 | `npm run db:migration:up` / `db:migration:down` | Apply / revert migrations |
 | `npm run db:seed` | Seed the database |
 
 > If your shell exports `NODE_ENV=development`, run the build as `NODE_ENV=production npm run build`; `next build` fails otherwise.
+
+## Testing and CI
+
+- **Unit tests** (Vitest) sit next to the code as `*.test.ts(x)`. Coverage must stay at **100%** (lines, branches, functions, statements) for every package; `npm run test:coverage` fails below that. The shadcn-generated primitives in `packages/ui/src/components/ui/` are the only code excluded.
+- **Integration tests** (`packages/app/integration/`) start PostgreSQL 18 in a throwaway Docker container with [testcontainers](https://testcontainers.com), apply the migrations, boot the production build with `next start`, and drive it in Chrome with [agent-browser](https://github.com/vercel-labs/agent-browser). One-time setup: `npx agent-browser install --with-deps`. Without Docker, point `INTEGRATION_DATABASE_URL` at an empty scratch database instead.
+- **CI** (`.github/workflows/ci.yml`) runs on every pull request and on pushes to `main`, with four jobs: lint & typecheck, unit tests with coverage (report uploaded as an artifact and summarised on the run page), production build, and integration tests (screenshots and server logs uploaded on failure).
 
 ## AI-assisted development
 
