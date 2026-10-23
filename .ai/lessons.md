@@ -33,6 +33,7 @@ The `details` link is optional for short lessons.
 
 <!-- Add new entries below this line, newest first. -->
 
+- 2026-10-23 — **CI: don't install Chrome with apt; use the runner's preinstalled Google Chrome** — `agent-browser install --with-deps` downloads ~70 MB through apt, and the Azure Ubuntu mirror stalled on `fonts-noto-cjk` in several runs. Retries and apt timeouts didn't help (the mirror trickles, so `Acquire::http::Timeout` never fires). The workflow sets `AGENT_BROWSER_EXECUTABLE_PATH` to `google-chrome` from the image instead. Also: every job needs `timeout-minutes`; without it a hang lasts up to 6 hours.
 - 2026-10-23 — **A `.gitignore` pattern with a slash in the middle is anchored to the `.gitignore`'s folder** — `integration/.artifacts/` in the root file never matched `packages/app/integration/.artifacts`, and the artifacts got committed. Prefix with `**/` for nested paths, and check with `git check-ignore -v <path>` before committing.
 - 2026-10-23 — **agent-browser selectors aren't Playwright's** — `button:has-text('…')` fails with "Element not found". Use CSS, or `find role <role> click --name "<name>"` (`Browser.clickRole` in the integration helper).
 - 2026-10-23 — **Never rely on class names at runtime** — the production build minifies them, so `new.target.name`/`constructor.name` become `""` (errors showed `name: ""` in pino logs). Set `name` explicitly on each error class; identify errors by `instanceof` or a `code` field.
