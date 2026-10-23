@@ -6,13 +6,13 @@ export default defineProject({
   resolve: {
     alias: {
       "@/": fileURLToPath(new URL("./src/", import.meta.url)),
-      // `server-only` throws outside a React Server Components bundle.
-      "server-only": fileURLToPath(new URL("./test/empty-module.ts", import.meta.url)),
     },
   },
   test: {
     name: "app",
     include: ["src/**/*.test.{ts,tsx}"],
+    // Tests assert on the logger through spies; keep real output quiet.
+    env: { LOG_LEVEL: "silent" },
     environment: "node",
   },
 });

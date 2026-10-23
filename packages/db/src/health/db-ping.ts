@@ -1,5 +1,9 @@
-import type { DbPing } from "@devmentor/core";
 import type { EntityManager } from "@mikro-orm/postgresql";
+
+/** Checks that the database answers. */
+export interface DbPing {
+  ping(): Promise<void>;
+}
 
 export function createDbPing({ em }: { em: EntityManager }): DbPing {
   return {
