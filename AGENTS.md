@@ -74,7 +74,6 @@ packages/
   - There is no top-level `app/layout.tsx`. Navigating between the two areas does a full page load, which is expected.
 - shadcn/ui components are generated into `packages/ui` (its `components.json` lives there) and imported as `@devmentor/ui/...`. Don't duplicate them in `app`.
 - Tailwind v4 is configured CSS-first (no `tailwind.config.*`). Each area's CSS has `@source` directives that cover `packages/ui/src` and `packages/app/src`; keep them when moving files.
-- The frontend CSS leaves out Tailwind's preflight reset while the starter landing page exists. Switch to `@import "tailwindcss";` when that page is replaced.
 - Add shadcn components from `packages/ui`: `npx shadcn add <component>`.
 - Default to Server Components. Add `"use client"` only where interactivity requires it.
 
