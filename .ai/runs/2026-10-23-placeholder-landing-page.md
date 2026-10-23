@@ -3,6 +3,7 @@
 - **Date:** 2026-10-23
 - **Goal:** Replace the Next.js starter page at `/` with a placeholder/sample DevMentor landing page.
 - **Spec:** none (small UI change)
+- **PR:** https://github.com/maciejsmolen/ai_techleaders_sandbox/pull/2
 - **Status:** completed
 
 ## Plan
