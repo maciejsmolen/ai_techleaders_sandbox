@@ -1,16 +1,8 @@
-import type { HealthReport } from "@devmentor/core";
-
-import { withRequestScope } from "@/server/container";
+import { withScope } from "@devmentor/core/container";
+import { apiHandler } from "@devmentor/core/http";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
-  let report: HealthReport;
-  try {
-    report = await withRequestScope(({ healthService }) => healthService.check());
-  } catch {
-    // The container couldn't be built (e.g. the database is unreachable at startup).
-    report = { status: "error", db: "error" };
-  }
-  return Response.json(report, { status: report.status === "ok" ? 200 : 503 });
-}
+// 200 { ok: true, data: { status, db } }, or 503 `service_unavailable` when
+// the database is unreachable (HealthService and withScope throw it).
+export const GET = apiHandler(() => withScope(({ healthService }) => healthService.check()));
