@@ -33,6 +33,7 @@ The `details` link is optional for short lessons.
 
 <!-- Add new entries below this line, newest first. -->
 
+- 2026-10-23 — **Every CI job needs `timeout-minutes`, and network installs need retries** — an apt mirror download in `agent-browser install --with-deps` stalled for 10+ minutes on a push to `main`, and without a timeout GitHub would have waited 6 hours. The workflow now sets apt `Acquire::Retries`/`Acquire::http::Timeout`, retries the install up to 3× with `timeout 5m`, and caps every job. Keep this for any new step that downloads things.
 - 2026-10-23 — **A `.gitignore` pattern with a slash in the middle is anchored to the `.gitignore`'s folder** — `integration/.artifacts/` in the root file never matched `packages/app/integration/.artifacts`, and the artifacts got committed. Prefix with `**/` for nested paths, and check with `git check-ignore -v <path>` before committing.
 - 2026-10-23 — **agent-browser selectors aren't Playwright's** — `button:has-text('…')` fails with "Element not found". Use CSS, or `find role <role> click --name "<name>"` (`Browser.clickRole` in the integration helper).
 - 2026-10-23 — **Never rely on class names at runtime** — the production build minifies them, so `new.target.name`/`constructor.name` become `""` (errors showed `name: ""` in pino logs). Set `name` explicitly on each error class; identify errors by `instanceof` or a `code` field.

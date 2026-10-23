@@ -20,6 +20,7 @@ jobs:
   lint:
     name: Lint & typecheck
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -36,6 +37,7 @@ jobs:
   unit:
     name: Unit tests (100% coverage)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -65,6 +67,7 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -79,6 +82,7 @@ jobs:
   integration:
     name: Integration tests (testcontainers + agent-browser)
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     env:
       # Ubuntu runners restrict unprivileged user namespaces, which Chrome's sandbox needs.
       AGENT_BROWSER_ARGS: --no-sandbox
@@ -98,8 +102,19 @@ jobs:
           path: ~/.agent-browser/browsers
           key: agent-browser-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
       - name: Install Chrome and its system libraries
-        run: npx agent-browser install --with-deps
+        # `--with-deps` runs apt-get. A stalled mirror download once hung this
+        # step for 10+ minutes, so apt gives up on silent connections and
+        # retries, and each attempt is capped.
+        run: |
+          printf 'Acquire::Retries "3";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' \
+            | sudo tee /etc/apt/apt.conf.d/80-ci-network > /dev/null
+          for attempt in 1 2 3; do
+            timeout 5m npx agent-browser install --with-deps && exit 0
+            echo "::warning::agent-browser install attempt $attempt failed; retrying"
+          done
+          exit 1
       - name: Run integration tests (PostgreSQL via testcontainers)
+        timeout-minutes: 10
         run: npm run test:integration
       - uses: actions/upload-artifact@v4
         if: failure()
