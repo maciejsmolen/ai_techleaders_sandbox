@@ -48,7 +48,7 @@
 
 ## Open issues / follow-ups
 
-- Branch protection: the user approved making the four checks required on `main`, but GitHub refused (`403: Upgrade to GitHub Pro or make this repository public`). Branch protection and rulesets need GitHub Pro (or a public repo) for private repositories. Until then the checks run and show on every PR but don't block merging; "all four green before merging" is a rule in `AGENTS.md` only.
+- Branch protection: the first attempt failed (`403: Upgrade to GitHub Pro or make this repository public`); the user then made the repository public. **Enabled on `main` (2026-10-23):** the four CI checks are required (pinned to the GitHub Actions app, id 15368), `enforce_admins` on, force-pushes and deletion blocked; no required reviews, and "up to date before merging" off (stacked PRs). PR #2 was blocked until it contained the workflow, so the stack was merged top-down (#4 → #3 → #2).
 - The first `feat/ci` commit accidentally included `integration/.artifacts/` (local logs and a screenshot, no credentials); a follow-up commit untracked them and fixed the ignore pattern. They remain in that commit's history.
 - npm warns about unapproved install scripts (now also `agent-browser`, `cpu-features`, `ssh2`, `protobufjs`, from testcontainers); everything works without them. Review with `npm install-scripts ls`.
 
